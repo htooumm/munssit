@@ -1,0 +1,17 @@
+# Railway configuration file
+version: 2
+services:
+  - name: whatsapp-restaurant-bot
+    dockerfile: Dockerfile
+    env:
+      - name: PINECONE_API_KEY
+        value: ${PINECONE_API_KEY}
+      - name: GEMINI_API_KEY
+        value: ${GEMINI_API_KEY}
+      - name: WHAPI_API_URL
+        value: ${WHAPI_API_URL}
+      - name: WHAPI_API_TOKEN
+        value: ${WHAPI_API_TOKEN}
+    ports:
+      - name: web
+        port: 8000
