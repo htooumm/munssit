@@ -1,69 +1,42 @@
-from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import JSONResponse
-import uvicorn
 import os
+from fastapi import FastAPI, Request, HTTPException
+from src.whatsapp_integration import process_webhook
+from src.rag_implementation import query_menu
 from dotenv import load_dotenv
 
-from src.config import WEBHOOK_PATH, VERIFY_TOKEN, APP_PORT, APP_HOST
-from src.vector_store import init_pinecone
-from src.ai_handler import GeminiAI
-from src.whatsapp_handler import WhatsAppHandler
-
-# Load environment variables
+# تحميل متغيرات البيئة
 load_dotenv()
 
-# Initialize FastAPI app
-app = FastAPI(title="Restaurant WhatsApp Bot")
-
-# Initialize Pinecone
-pinecone_index = init_pinecone()
-
-# Initialize AI handler
-ai_handler = GeminiAI(pinecone_index)
-
-# Initialize WhatsApp handler
-whatsapp_handler = WhatsAppHandler(ai_handler)
+# إنشاء تطبيق FastAPI
+app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"status": "active", "message": "Restaurant WhatsApp Bot is running"}
+    return {"message": "Restaurant WhatsApp Bot API is running!"}
 
-@app.get(WEBHOOK_PATH)
+@app.get("/webhook")
 async def verify_webhook(request: Request):
-    """
-    Verify webhook for WhatsApp API
-    """
-    # Get query parameters
-    query_params = dict(request.query_params)
-    
-    # Check if verification token is correct
-    if query_params.get("hub.verify_token") == VERIFY_TOKEN:
-        # Return challenge
-        return int(query_params.get("hub.challenge", 0))
-    
-    # Return error if token is invalid
-    raise HTTPException(status_code=403, detail="Verification token mismatch")
+    # التحقق من Webhook (مطلوب لـ WhatsApp)
+    params = dict(request.query_params)
+    if params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == os.getenv("VERIFY_TOKEN", "your_verification_token_here"):
+        return int(params.get("hub.challenge", 0))
+    raise HTTPException(status_code=403, detail="Verification failed")
 
-@app.post(WEBHOOK_PATH)
+@app.post("/webhook")
 async def webhook(request: Request):
-    """
-    Handle incoming webhook events from WhatsApp
-    """
-    try:
-        # Get request body
-        body = await request.json()
-        
-        # Handle message
-        result = whatsapp_handler.handle_message(body)
-        
-        return JSONResponse(content=result)
-    except Exception as e:
-        print(f"Error processing webhook: {e}")
-        return JSONResponse(content={"status": "error", "message": str(e)})
+    # معالجة رسائل WhatsApp الواردة
+    body = await request.json()
+    return await process_webhook(body)
 
-def start():
-    """Start the FastAPI server"""
-    uvicorn.run(app, host=APP_HOST, port=APP_PORT)
+@app.get("/test")
+async def test_rag(query: str = "ما هي أنواع الشاورما لديكم؟"):
+    # اختبار نظام RAG
+    response = query_menu(query)
+    return {"query": query, "response": response}
 
+# تشغيل التطبيق إذا تم تنفيذه مباشرة
 if __name__ == "__main__":
-    start()
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("app:app", host=host, port=port, reload=True)
